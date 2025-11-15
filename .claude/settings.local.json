@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__serena__write_memory",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__serena__insert_after_symbol",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "mcp__serena__insert_before_symbol",
+      "mcp__serena__replace_symbol_body",
+      "Bash(cat:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(python:*)",
+      "mcp__serena__search_for_pattern",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "mcp__serena__list_memories",
+      "Bash(curl:*)",
+      "Bash(pip search:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "mcp__serena__read_memory",
+      "Bash(timeout:*)",
+      "Bash(mcp__serena__write_memory)",
+      "Bash(sqlite3:*)",
+      "Bash(git log:*)",
+      "mcp__serena__find_file",
+      "Bash(C:/Python312/python.exe:*)",
+      "Bash(claude mcp add:*)",
+      "mcp__serena__get_current_config",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__list_dir",
+      "Bash(git init:*)",
+      "mcp__serena__activate_project"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

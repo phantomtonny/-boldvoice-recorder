@@ -1,0 +1,17 @@
+{
+  "name": "boldvoice-recorder",
+  "version": "0.1.0",
+  "description": "Chrome extension to automatically record and save BoldVoice pronunciation assessments",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "chrome-extension",
+    "boldvoice",
+    "voice-recorder",
+    "pronunciation"
+  ],
+  "devDependencies": {}
+}
