@@ -13,15 +13,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderDashboard();
 });
 
-// 目標アクセント設定を読み込み
+// 目標アクセント設定とフィルター設定を読み込み
 async function loadTargetAccent() {
   try {
-    const result = await chrome.storage.local.get(['targetAccent']);
+    const result = await chrome.storage.local.get(['targetAccent', 'languageFilter', 'periodFilter']);
     targetAccent = result.targetAccent || 'en_uk';
     document.getElementById('targetAccent').value = targetAccent;
-    console.log('Target accent loaded:', targetAccent);
+
+    // フィルター設定も復元
+    if (result.languageFilter !== undefined) {
+      document.getElementById('languageFilter').value = result.languageFilter;
+    }
+    if (result.periodFilter !== undefined) {
+      document.getElementById('periodFilter').value = result.periodFilter;
+    }
+
+    console.log('Settings loaded:', { targetAccent, languageFilter: result.languageFilter, periodFilter: result.periodFilter });
   } catch (error) {
-    console.error('Failed to load target accent:', error);
+    console.error('Failed to load settings:', error);
   }
 }
 
@@ -61,8 +70,14 @@ function setupEventListeners() {
   document.getElementById('targetAccent').addEventListener('change', (e) => {
     saveTargetAccent(e.target.value);
   });
-  document.getElementById('languageFilter').addEventListener('change', renderDashboard);
-  document.getElementById('periodFilter').addEventListener('change', renderDashboard);
+  document.getElementById('languageFilter').addEventListener('change', async (e) => {
+    await chrome.storage.local.set({ languageFilter: e.target.value });
+    renderDashboard();
+  });
+  document.getElementById('periodFilter').addEventListener('change', async (e) => {
+    await chrome.storage.local.set({ periodFilter: e.target.value });
+    renderDashboard();
+  });
 }
 
 // ダッシュボード全体を描画
@@ -200,7 +215,12 @@ function renderChart(data) {
 
   const labels = withScores.map(r => {
     const date = new Date(r.timestamp);
-    return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${day} ${hours}:${minutes}`;
   });
 
   const scores = withScores.map(r => r.targetScore);
@@ -299,8 +319,31 @@ function renderHistoryTable(data) {
           const date = new Date(r.timestamp);
           const dateStr = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-          const scoreClass = r.score >= 80 ? 'score-high' : r.score >= 60 ? 'score-medium' : 'score-low';
-          const scoreDisplay = r.score > 0 ? `<span class="score-badge ${scoreClass}">${r.score}%</span>` : '<span style="color: #999;">-</span>';
+          // ターゲットアクセントのスコアを取得
+          let displayScore = r.score;
+          let isTargetAccent = r.language === targetAccent;
+
+          // 新しいデータ形式の場合
+          if (r.allLanguages && r.allLanguages.length > 0) {
+            const targetLang = r.allLanguages.find(lang => lang.language === targetAccent);
+            if (targetLang) {
+              displayScore = targetLang.percent;
+              isTargetAccent = true;
+            } else {
+              isTargetAccent = false;
+            }
+          }
+
+          // ターゲットアクセントのみ色付け、それ以外はグレー
+          let scoreDisplay;
+          if (isTargetAccent && displayScore > 0) {
+            const scoreClass = displayScore >= 80 ? 'score-high' : displayScore >= 60 ? 'score-medium' : 'score-low';
+            scoreDisplay = `<span class="score-badge ${scoreClass}">${displayScore}%</span>`;
+          } else if (displayScore > 0) {
+            scoreDisplay = `<span style="color: #999;">${displayScore}%</span>`;
+          } else {
+            scoreDisplay = '<span style="color: #999;">-</span>';
+          }
 
           return `
             <tr>

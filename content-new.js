@@ -45,6 +45,7 @@ async function startRecording() {
         ? allLanguages.reduce((best, current) => (!best || current.percent > best.percent) ? current : best, null)
         : { language: "unknown", percent: 0 };
       const { language, percent } = topResult;
+
       const now = new Date();
       const dateStr = [
         now.getFullYear(),
