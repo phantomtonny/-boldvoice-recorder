@@ -35,7 +35,10 @@
       "mcp__serena__check_onboarding_performed",
       "mcp__serena__list_dir",
       "Bash(git init:*)",
-      "mcp__serena__activate_project"
+      "mcp__serena__activate_project",
+      "mcp__serena__think_about_task_adherence",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

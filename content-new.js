@@ -224,7 +224,7 @@ function setupTriggers() {
   }
 
   // 方式2: 最終結果ページが表示されたら録音を停止
-  // 「Download BoldVoice」が表示されたら最終結果と判断
+  // 複数の方法で最終結果ページを判定
   let hasStoppedRecording = false; // 重複停止を防ぐフラグ
 
   const observer = new MutationObserver(() => {
@@ -233,11 +233,24 @@ function setupTriggers() {
       return;
     }
 
-    // 最終結果ページの判定：「Download BoldVoice」テキストの存在
-    // パフォーマンスのため、特定の範囲のみ検索
-    const downloadSection = document.querySelector('.info-section, [class*="download"], [class*="Download"]');
-    if (downloadSection && downloadSection.textContent.includes('Download BoldVoice')) {
-      console.log("Final results page detected (Download BoldVoice found), stopping recording");
+    // 方法1: 「Download BoldVoice」テキストの存在
+    const bodyText = document.body.textContent || '';
+    const hasDownloadText = bodyText.includes('Download BoldVoice');
+
+    // 方法2: パーセンテージとdownloadボタンの両方が存在
+    const hasPercentage = /\d+%/.test(bodyText);
+    const hasGetButton = bodyText.includes('Get BoldVoice') || bodyText.includes('Download');
+
+    // デバッグログ
+    if (hasPercentage) {
+      console.log('[DEBUG] Results detected, checking for final page...');
+      console.log('[DEBUG] Has Download text:', hasDownloadText);
+      console.log('[DEBUG] Has Get Button:', hasGetButton);
+    }
+
+    // 最終結果ページの判定
+    if (hasDownloadText || (hasPercentage && hasGetButton)) {
+      console.log("Final results page detected, stopping recording");
       hasStoppedRecording = true;
       stopRecording();
     }
