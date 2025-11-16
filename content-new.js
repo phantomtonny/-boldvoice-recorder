@@ -40,8 +40,11 @@ async function startRecording() {
       const blob = new Blob(recordedChunks, { type: "audio/webm" });
       const blobUrl = URL.createObjectURL(blob);
 
-      const result = extractTopLanguageFromPage() || { language: "unknown", percent: 0 };
-      const { language, percent } = result;
+      const allLanguages = extractAllLanguagesFromPage();
+      const topResult = allLanguages.length > 0
+        ? allLanguages.reduce((best, current) => (!best || current.percent > best.percent) ? current : best, null)
+        : { language: "unknown", percent: 0 };
+      const { language, percent } = topResult;
       const now = new Date();
       const dateStr = [
         now.getFullYear(),
@@ -54,6 +57,7 @@ async function startRecording() {
         blobUrl,
         language,
         percent,
+        allLanguages,
         dateStr
       }, (res) => {
         if (!res || !res.ok) {
@@ -120,15 +124,14 @@ function checkForResults() {
 }
 
 /**
- * Bold Voice Accent Oracleの結果画面から、言語＋パーセンテージを拾って
- * 一番高いものを返す関数
+ * Bold Voice Accent Oracleの結果画面から、すべての言語＋パーセンテージを取得
  *
  * 実際のDOM構造（2025-11-16時点）:
  * - 言語名: <div class="flex flex-1 text-text-primary-dark text-base leading-[130%] font-bold">Japanese</div>
  * - スコア: <div class="text-text-primary-dark text-base leading-[130%] font-bold">50%</div>
  * - 2位以降の言語: class="flex flex-1 text-[#11D1A7] text-base leading-[130%] font-bold"
  */
-function extractTopLanguageFromPage() {
+function extractAllLanguagesFromPage() {
   // 結果ページのすべての言語名と％のペアを取得
   const languageScores = [];
 
@@ -180,14 +183,8 @@ function extractTopLanguageFromPage() {
     }
   });
 
-  // スコアが最も高いものを返す
-  if (languageScores.length === 0) {
-    return null;
-  }
-
-  return languageScores.reduce((best, current) => {
-    return (!best || current.percent > best.percent) ? current : best;
-  }, null);
+  // すべての言語スコアを返す（スコア降順でソート）
+  return languageScores.sort((a, b) => b.percent - a.percent);
 }
 
 /**

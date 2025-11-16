@@ -40,7 +40,8 @@
       "Bash(dir:*)",
       "Bash(findstr:*)",
       "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\007.md'' | Measure-Object -Line).Lines\")",
-      "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\009.md'' | Measure-Object -Line).Lines\")"
+      "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\009.md'' | Measure-Object -Line).Lines\")",
+      "Bash(uvx --from git+https://github.com/oraios/serena serena write-memory bold_voice_recorder_status \"BoldVoice Recorder extension is now fully functional with 2-round recording system. All critical bugs fixed including the 2nd recording session stop issue. Version 0.2.1\")"
     ],
     "deny": [],
     "ask": []

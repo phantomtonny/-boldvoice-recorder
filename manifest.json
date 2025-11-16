@@ -16,6 +16,9 @@
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_title": "BoldVoice Recorder Dashboard"
+  },
   "content_scripts": [
     {
       "matches": [

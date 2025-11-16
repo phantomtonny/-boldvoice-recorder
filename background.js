@@ -1,5 +1,12 @@
 // content.js からメッセージで Blob URL とメタ情報を受け取って保存する
 
+// 拡張機能アイコンクリックでダッシュボードを開く
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({
+    url: chrome.runtime.getURL('dashboard.html')
+  });
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "saveRecording") {
     handleSaveRecording(message).then(() => {
@@ -13,7 +20,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleSaveRecording(message) {
-  const { blobUrl, language, percent, dateStr, index } = message;
+  const { blobUrl, language, percent, allLanguages, dateStr, index } = message;
 
   const { parentFolder } = await chrome.storage.sync.get({
     parentFolder: "BoldVoiceRec"
@@ -43,4 +50,33 @@ async function handleSaveRecording(message) {
     filename: fullPath,
     conflictAction: "uniquify"
   });
+
+  // 録音履歴をストレージに保存（ダッシュボード用）
+  await saveRecordingHistory({
+    timestamp: Date.now(),
+    language: language,
+    score: percent || 0,
+    allLanguages: allLanguages || [],
+    filename: filename,
+    dateStr: dateStr
+  });
+}
+
+// 録音履歴をストレージに保存
+async function saveRecordingHistory(entry) {
+  try {
+    const result = await chrome.storage.local.get(['recordingHistory']);
+    const history = result.recordingHistory || [];
+
+    // 新しいエントリを追加
+    history.push(entry);
+
+    // 最新1000件のみ保持（パフォーマンス対策）
+    const trimmed = history.slice(-1000);
+
+    await chrome.storage.local.set({ recordingHistory: trimmed });
+    console.log('Recording history saved:', entry);
+  } catch (error) {
+    console.error('Failed to save recording history:', error);
+  }
 }

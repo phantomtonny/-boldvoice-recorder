@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BoldVoice Recorder Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #777;
+      font-size: 14px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      color: #777;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .chart-container {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .chart-title {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 20px;
+      font-weight: 600;
+    }
+
+    .history-container {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .filter-group label {
+      font-size: 12px;
+      color: #666;
+      font-weight: 500;
+    }
+
+    select, input {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    select:focus, input:focus {
+      border-color: #667eea;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: #f8f9fa;
+    }
+
+    th {
+      padding: 12px;
+      text-align: left;
+      font-size: 13px;
+      color: #666;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #eee;
+      font-size: 14px;
+      color: #333;
+    }
+
+    tr:hover {
+      background: #f8f9fa;
+    }
+
+    .score-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .score-high {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .score-medium {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .score-low {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+
+    .empty-state-text {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .empty-state-subtext {
+      font-size: 14px;
+      color: #bbb;
+    }
+
+    canvas {
+      max-height: 300px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 BoldVoice Recorder Dashboard</h1>
+      <p class="subtitle">あなたの成長を可視化</p>
+
+      <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+        <div style="display: flex; align-items: center; gap: 15px;">
+          <label for="targetAccent" style="font-weight: 600; color: #555;">🎯 目標アクセント:</label>
+          <select id="targetAccent" style="padding: 8px 12px; border: 2px solid #667eea; border-radius: 6px; font-size: 14px; font-weight: 500; color: #333; cursor: pointer; min-width: 200px;">
+            <option value="en_us">American English</option>
+            <option value="en_uk">British English</option>
+            <option value="en">English (General)</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+            <option value="de">German</option>
+            <option value="it">Italian</option>
+            <option value="pt">Portuguese</option>
+            <option value="zh">Chinese</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+          </select>
+          <span id="targetSaved" style="color: #4CAF50; font-size: 13px; opacity: 0; transition: opacity 0.3s;">✓ 保存されました</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="totalRecordings">0</div>
+        <div class="stat-label">総録音数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="avgScore">0%</div>
+        <div class="stat-label">平均スコア</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="bestScore">0%</div>
+        <div class="stat-label">最高スコア</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="recentImprovement">-</div>
+        <div class="stat-label">直近の改善</div>
+      </div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">スコア推移</div>
+      <canvas id="scoreChart"></canvas>
+    </div>
+
+    <div class="history-container">
+      <div class="chart-title">録音履歴</div>
+
+      <div class="filters">
+        <div class="filter-group">
+          <label>言語</label>
+          <select id="languageFilter">
+            <option value="">すべて</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>期間</label>
+          <select id="periodFilter">
+            <option value="7">過去7日間</option>
+            <option value="30">過去30日間</option>
+            <option value="90">過去90日間</option>
+            <option value="">すべて</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="historyTableContainer">
+        <!-- テーブルまたは空状態がここに挿入されます -->
+      </div>
+    </div>
+  </div>
+
+  <script src="chart.min.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
