@@ -1,5 +1,5 @@
 // Version check
-console.log('BoldVoice Recorder content.js loaded - Version 2.0 (2回判定対応版)');
+console.log('BoldVoice Recorder content.js loaded - Version 2.1 (ページ離脱警告追加)');
 
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -282,3 +282,14 @@ if (document.readyState === "loading") {
 } else {
   setupTriggers();
 }
+
+// 録音中にページを離れようとすると警告を表示
+window.addEventListener("beforeunload", (e) => {
+  if (mediaRecorder && mediaRecorder.state === "recording") {
+    // 標準的な警告メッセージを表示（ブラウザが自動的に表示）
+    e.preventDefault();
+    e.returnValue = ""; // Chrome requires returnValue to be set
+    console.log("[WARNING] Recording in progress - page unload prevented");
+    return "録音中です。ページを離れると録音が失われます。";
+  }
+});
