@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BoldVoice Recorder",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bold Voiceで判定すると同時に音声を録音して保存する拡張",
   "permissions": [
     "downloads",

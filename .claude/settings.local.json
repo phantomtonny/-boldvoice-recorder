@@ -39,7 +39,8 @@
       "mcp__serena__think_about_task_adherence",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\007.md'' | Measure-Object -Line).Lines\")"
+      "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\007.md'' | Measure-Object -Line).Lines\")",
+      "Bash(powershell -Command \"(Get-Content ''C:\\Projects\\bold_voice_recorder\\imp\\009.md'' | Measure-Object -Line).Lines\")"
     ],
     "deny": [],
     "ask": []

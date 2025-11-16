@@ -1,9 +1,11 @@
 // Version check
-console.log('BoldVoice Recorder content.js loaded - Version 2.1 (ページ離脱警告追加)');
+console.log('BoldVoice Recorder content.js loaded - Version 2.2 (複数セッション対応修正)');
 
 let mediaRecorder = null;
 let recordedChunks = [];
 let currentStream = null;
+let hasStoppedRecording = false; // 重複停止を防ぐフラグ（グローバル化）
+let periodicCheckInterval = null; // 定期チェックのインターバルID（グローバル化）
 
 async function startRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -11,6 +13,18 @@ async function startRecording() {
   }
 
   try {
+    // 新しい録音セッション開始時にフラグをリセット
+    hasStoppedRecording = false;
+
+    // 既存の定期チェックがあればクリア
+    if (periodicCheckInterval) {
+      clearInterval(periodicCheckInterval);
+    }
+
+    // 定期チェックを再開
+    periodicCheckInterval = setInterval(checkForResults, 1000);
+    console.log('[INFO] Recording session started, periodic check enabled');
+
     currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(currentStream);
 
@@ -66,6 +80,42 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     console.log("Recording stopped");
+  }
+}
+
+/**
+ * 結果ページ判定のロジック（グローバル関数化）
+ */
+function checkForResults() {
+  // 既に停止済みの場合はスキップ
+  if (hasStoppedRecording || !mediaRecorder || mediaRecorder.state !== "recording") {
+    return;
+  }
+
+  // 方法1: 「Download BoldVoice」テキストの存在
+  const bodyText = document.body.textContent || '';
+  const hasDownloadText = bodyText.includes('Download BoldVoice');
+
+  // 方法2: パーセンテージとdownloadボタンの両方が存在
+  const hasPercentage = /\d+%/.test(bodyText);
+  const hasGetButton = bodyText.includes('Get BoldVoice') || bodyText.includes('Download');
+
+  // デバッグログ
+  if (hasPercentage) {
+    console.log('[DEBUG] Results detected, checking for final page...');
+    console.log('[DEBUG] Has Download text:', hasDownloadText);
+    console.log('[DEBUG] Has Get Button:', hasGetButton);
+  }
+
+  // 最終結果ページの判定
+  if (hasDownloadText || (hasPercentage && hasGetButton)) {
+    console.log("Final results page detected, stopping recording");
+    hasStoppedRecording = true;
+    stopRecording();
+    if (periodicCheckInterval) {
+      clearInterval(periodicCheckInterval);
+      periodicCheckInterval = null;
+    }
   }
 }
 
@@ -226,52 +276,12 @@ function setupTriggers() {
   }
 
   // 方式2: 最終結果ページが表示されたら録音を停止
-  // 複数の方法で最終結果ページを判定
-  let hasStoppedRecording = false; // 重複停止を防ぐフラグ
-
-  // 結果ページ判定のロジックを共通化
-  const checkForResults = () => {
-    // 既に停止済みの場合はスキップ
-    if (hasStoppedRecording || !mediaRecorder || mediaRecorder.state !== "recording") {
-      return;
-    }
-
-    // 方法1: 「Download BoldVoice」テキストの存在
-    const bodyText = document.body.textContent || '';
-    const hasDownloadText = bodyText.includes('Download BoldVoice');
-
-    // 方法2: パーセンテージとdownloadボタンの両方が存在
-    const hasPercentage = /\d+%/.test(bodyText);
-    const hasGetButton = bodyText.includes('Get BoldVoice') || bodyText.includes('Download');
-
-    // デバッグログ
-    if (hasPercentage) {
-      console.log('[DEBUG] Results detected, checking for final page...');
-      console.log('[DEBUG] Has Download text:', hasDownloadText);
-      console.log('[DEBUG] Has Get Button:', hasGetButton);
-    }
-
-    // 最終結果ページの判定
-    if (hasDownloadText || (hasPercentage && hasGetButton)) {
-      console.log("Final results page detected, stopping recording");
-      hasStoppedRecording = true;
-      stopRecording();
-      if (periodicCheckInterval) {
-        clearInterval(periodicCheckInterval);
-      }
-    }
-  };
-
   // MutationObserver: DOM変更を検出（2回判定パターン用）
   const observer = new MutationObserver(checkForResults);
   observer.observe(document.body, {
     childList: true,
     subtree: true
   });
-
-  // 定期チェック: 既に表示されている結果ページを検出（1回判定パターン用）
-  // MutationObserverは既存のDOMを検出できないため、定期チェックで補完
-  const periodicCheckInterval = setInterval(checkForResults, 1000);
 }
 
 // ページ読み込み時にトリガーをセットアップ
