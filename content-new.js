@@ -26,7 +26,8 @@ async function startRecording() {
       const blob = new Blob(recordedChunks, { type: "audio/webm" });
       const blobUrl = URL.createObjectURL(blob);
 
-      const { language } = extractTopLanguageFromPage() || { language: "unknown" };
+      const result = extractTopLanguageFromPage() || { language: "unknown", percent: 0 };
+      const { language, percent } = result;
       const now = new Date();
       const dateStr = [
         now.getFullYear(),
@@ -38,6 +39,7 @@ async function startRecording() {
         type: "saveRecording",
         blobUrl,
         language,
+        percent,
         dateStr
       }, (res) => {
         if (!res || !res.ok) {
@@ -227,7 +229,8 @@ function setupTriggers() {
   // 複数の方法で最終結果ページを判定
   let hasStoppedRecording = false; // 重複停止を防ぐフラグ
 
-  const observer = new MutationObserver(() => {
+  // 結果ページ判定のロジックを共通化
+  const checkForResults = () => {
     // 既に停止済みの場合はスキップ
     if (hasStoppedRecording || !mediaRecorder || mediaRecorder.state !== "recording") {
       return;
@@ -253,13 +256,22 @@ function setupTriggers() {
       console.log("Final results page detected, stopping recording");
       hasStoppedRecording = true;
       stopRecording();
+      if (periodicCheckInterval) {
+        clearInterval(periodicCheckInterval);
+      }
     }
-  });
+  };
 
+  // MutationObserver: DOM変更を検出（2回判定パターン用）
+  const observer = new MutationObserver(checkForResults);
   observer.observe(document.body, {
     childList: true,
     subtree: true
   });
+
+  // 定期チェック: 既に表示されている結果ページを検出（1回判定パターン用）
+  // MutationObserverは既存のDOMを検出できないため、定期チェックで補完
+  const periodicCheckInterval = setInterval(checkForResults, 1000);
 }
 
 // ページ読み込み時にトリガーをセットアップ

@@ -13,7 +13,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleSaveRecording(message) {
-  const { blobUrl, language, dateStr, index } = message;
+  const { blobUrl, language, percent, dateStr, index } = message;
 
   const { parentFolder } = await chrome.storage.sync.get({
     parentFolder: "BoldVoiceRec"
@@ -32,7 +32,9 @@ async function handleSaveRecording(message) {
 
   const indexStr = String(count).padStart(4, "0");
 
-  const filename = `${language}_${dateStr}_${indexStr}.webm`;
+  // スコアを整数に変換（小数点がある場合は切り捨て）
+  const percentStr = percent ? `_${Math.floor(percent)}percent` : '';
+  const filename = `${language}_${dateStr}_${indexStr}${percentStr}.webm`;
 
   const fullPath = `${parentFolder}/${language}/${groupName}/${filename}`;
 
