@@ -3,6 +3,11 @@
   "name": "BoldVoice Recorder",
   "version": "0.2.4",
   "description": "Bold Voiceで判定すると同時に音声を録音して保存する拡張",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "permissions": [
     "downloads",
     "storage"
