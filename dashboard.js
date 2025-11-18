@@ -5,6 +5,19 @@ let recordingsData = [];
 let chartInstance = null;
 let targetAccent = 'en_uk'; // デフォルト
 
+// セキュリティ: HTMLエスケープ関数（XSS対策）
+function escapeHtml(unsafe) {
+  if (typeof unsafe !== 'string') {
+    return '';
+  }
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // ページ読み込み時に実行
 document.addEventListener('DOMContentLoaded', async () => {
   await loadTargetAccent();
@@ -114,15 +127,19 @@ function getFilteredData() {
 function renderStats(data) {
   const total = data.length;
 
-  // 目標アクセントのスコアのみを抽出
-  const scores = data.map(r => {
-    if (r.allLanguages && r.allLanguages.length > 0) {
-      const targetLang = r.allLanguages.find(lang => lang.language === targetAccent);
-      return targetLang ? targetLang.percent : 0;
-    }
-    // 古いデータ（allLanguagesがない場合）は従来の方法
-    return r.language === targetAccent ? r.score : 0;
-  }).filter(s => s > 0);
+  // 目標アクセントの録音のみを抽出（録音言語がターゲットと一致するもの）
+  const targetRecordings = data.filter(r => r.language === targetAccent);
+  const scores = targetRecordings.map(r => r.score).filter(s => s > 0);
+
+  // ターゲット言語のデータがない場合
+  if (targetRecordings.length === 0) {
+    document.getElementById('totalRecordings').textContent = total;
+    document.getElementById('avgScore').textContent = '該当なし';
+    document.getElementById('bestScore').textContent = '該当なし';
+    document.getElementById('recentImprovement').textContent = '-';
+    updateLanguageFilter(recordingsData);
+    return;
+  }
 
   const avgScore = scores.length > 0
     ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)
@@ -132,11 +149,11 @@ function renderStats(data) {
     ? Math.max(...scores)
     : 0;
 
-  // 直近の改善率計算（最初の5件と最後の5件を比較）
+  // 直近の改善率計算（ターゲット言語の最初の5件と最後の5件を比較）
   let improvement = '-';
-  if (data.length >= 10) {
-    const recent = data.slice(-5).map(r => r.score).filter(s => s > 0);
-    const old = data.slice(0, 5).map(r => r.score).filter(s => s > 0);
+  if (targetRecordings.length >= 10) {
+    const recent = targetRecordings.slice(-5).map(r => r.score).filter(s => s > 0);
+    const old = targetRecordings.slice(0, 5).map(r => r.score).filter(s => s > 0);
 
     if (recent.length > 0 && old.length > 0) {
       const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
@@ -179,51 +196,65 @@ function updateLanguageFilter(data) {
 // グラフを描画
 function renderChart(data) {
   const ctx = document.getElementById('scoreChart');
+  const chartContainer = ctx.parentElement;
 
   // 古いチャートを破棄
   if (chartInstance) {
     chartInstance.destroy();
   }
 
+  // 既存の空メッセージを削除
+  const existingMsg = chartContainer.querySelector('.chart-empty-message');
+  if (existingMsg) {
+    existingMsg.remove();
+  }
+
   if (data.length === 0) {
     ctx.style.display = 'none';
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'chart-empty-message';
+    emptyMsg.innerHTML = `
+      <div style="text-align: center; padding: 60px 20px; color: #999;">
+        <div style="font-size: 48px; margin-bottom: 16px;">📊</div>
+        <div style="font-size: 16px;">録音データがありません</div>
+      </div>
+    `;
+    chartContainer.appendChild(emptyMsg);
+    return;
+  }
+
+  // データを日付順にソート
+  const sorted = [...data].sort((a, b) => a.timestamp - b.timestamp);
+
+  // 目標アクセントの録音のみを抽出（録音言語がターゲットと一致するもの）
+  const targetRecordings = sorted.filter(r => r.language === targetAccent && r.score > 0);
+
+  if (targetRecordings.length === 0) {
+    ctx.style.display = 'none';
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'chart-empty-message';
+    emptyMsg.innerHTML = `
+      <div style="text-align: center; padding: 60px 20px; color: #999;">
+        <div style="font-size: 48px; margin-bottom: 16px;">📈</div>
+        <div style="font-size: 16px; margin-bottom: 8px;">ターゲット言語（${getAccentDisplayName(targetAccent)}）のデータがありません</div>
+        <div style="font-size: 14px; color: #bbb;">この言語で録音を開始すると、グラフが表示されます</div>
+      </div>
+    `;
+    chartContainer.appendChild(emptyMsg);
     return;
   }
 
   ctx.style.display = 'block';
 
-  // データを日付順にソート
-  const sorted = [...data].sort((a, b) => a.timestamp - b.timestamp);
-
-  // 目標アクセントのスコアがあるデータのみ抽出
-  const withScores = sorted.map(r => {
-    let targetScore = 0;
-    if (r.allLanguages && r.allLanguages.length > 0) {
-      const targetLang = r.allLanguages.find(lang => lang.language === targetAccent);
-      targetScore = targetLang ? targetLang.percent : 0;
-    } else if (r.language === targetAccent) {
-      // 古いデータ（allLanguagesがない場合）
-      targetScore = r.score;
-    }
-    return { ...r, targetScore };
-  }).filter(r => r.targetScore > 0);
-
-  if (withScores.length === 0) {
-    ctx.style.display = 'none';
-    return;
-  }
-
-  const labels = withScores.map(r => {
+  const labels = targetRecordings.map(r => {
     const date = new Date(r.timestamp);
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${year}/${month}/${day} ${hours}:${minutes}`;
+    return `${year}/${month}/${day}`;
   });
 
-  const scores = withScores.map(r => r.targetScore);
+  const scores = targetRecordings.map(r => r.score);
 
   chartInstance = new Chart(ctx, {
     type: 'line',
@@ -261,6 +292,13 @@ function renderChart(data) {
             size: 13
           },
           callbacks: {
+            title: (context) => {
+              const recording = targetRecordings[context[0].dataIndex];
+              const date = new Date(recording.timestamp);
+              const hours = String(date.getHours()).padStart(2, '0');
+              const minutes = String(date.getMinutes()).padStart(2, '0');
+              return `${context[0].label} ${hours}:${minutes}`;
+            },
             label: (context) => `スコア: ${context.parsed.y}%`
           }
         }
@@ -319,38 +357,30 @@ function renderHistoryTable(data) {
           const date = new Date(r.timestamp);
           const dateStr = `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-          // ターゲットアクセントのスコアを取得
-          let displayScore = r.score;
+          // 常に最高スコアを表示（r.scoreは既に最高スコア）
+          // セキュリティ: 数値として検証（background.jsで既に検証済みだが念のため）
+          let displayScore = (typeof r.score === 'number' && r.score >= 0 && r.score <= 100) ? r.score : 0;
+          // 録音言語がターゲットと一致する場合のみハイライト
           let isTargetAccent = r.language === targetAccent;
-
-          // 新しいデータ形式の場合
-          if (r.allLanguages && r.allLanguages.length > 0) {
-            const targetLang = r.allLanguages.find(lang => lang.language === targetAccent);
-            if (targetLang) {
-              displayScore = targetLang.percent;
-              isTargetAccent = true;
-            } else {
-              isTargetAccent = false;
-            }
-          }
 
           // ターゲットアクセントのみ色付け、それ以外はグレー
           let scoreDisplay;
           if (isTargetAccent && displayScore > 0) {
             const scoreClass = displayScore >= 80 ? 'score-high' : displayScore >= 60 ? 'score-medium' : 'score-low';
-            scoreDisplay = `<span class="score-badge ${scoreClass}">${displayScore}%</span>`;
+            // 数値は安全だが、念のためMath.floor()で整数化
+            scoreDisplay = `<span class="score-badge ${scoreClass}">${Math.floor(displayScore)}%</span>`;
           } else if (displayScore > 0) {
-            scoreDisplay = `<span style="color: #999;">${displayScore}%</span>`;
+            scoreDisplay = `<span style="color: #999;">${Math.floor(displayScore)}%</span>`;
           } else {
             scoreDisplay = '<span style="color: #999;">-</span>';
           }
 
           return `
             <tr>
-              <td>${dateStr}</td>
-              <td>${r.language.toUpperCase()}</td>
+              <td>${escapeHtml(dateStr)}</td>
+              <td>${escapeHtml(r.language).toUpperCase()}</td>
               <td>${scoreDisplay}</td>
-              <td style="font-family: monospace; font-size: 12px; color: #666;">${r.filename}</td>
+              <td style="font-family: monospace; font-size: 12px; color: #666;">${escapeHtml(r.filename)}</td>
             </tr>
           `;
         }).join('')}

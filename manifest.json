@@ -5,9 +5,7 @@
   "description": "Bold Voiceで判定すると同時に音声を録音して保存する拡張",
   "permissions": [
     "downloads",
-    "storage",
-    "scripting",
-    "activeTab"
+    "storage"
   ],
   "host_permissions": [
     "https://*.boldvoice.com/*",
@@ -29,5 +27,8 @@
       "run_at": "document_idle"
     }
   ],
-  "options_page": "options.html"
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline';"
+  }
 }

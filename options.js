@@ -11,20 +11,46 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // 保存ボタンのクリックイベント
   saveBtn.addEventListener("click", async () => {
-    const newFolderName = parentFolderInput.value.trim() || "BoldVoiceRec";
+    const input = parentFolderInput.value.trim();
 
-    // 無効な文字をチェック（ファイルシステムで使えない文字）
+    // 空の場合はデフォルト値
+    if (!input) {
+      await chrome.storage.sync.set({ parentFolder: "BoldVoiceRec" });
+      showMessage("設定を保存しました（デフォルト値）", true);
+      return;
+    }
+
+    // セキュリティ: フォルダ名のバリデーション
+    // 1. パストラバーサル（..）を防止
+    if (input.includes('..')) {
+      showMessage("フォルダ名に「..」は使用できません", false);
+      return;
+    }
+
+    // 2. 無効な文字をチェック（ファイルシステムで使えない文字）
     const invalidChars = /[<>:"/\\|?*]/;
-    if (invalidChars.test(newFolderName)) {
+    if (invalidChars.test(input)) {
       showMessage("フォルダ名に使用できない文字が含まれています", false);
       return;
     }
 
+    // 3. 安全な文字のみを許可（英数字、ハイフン、アンダースコア）
+    const sanitized = input.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    // 4. サニタイズ後に空になった場合はデフォルト値
+    const finalFolderName = sanitized || "BoldVoiceRec";
+
     await chrome.storage.sync.set({
-      parentFolder: newFolderName
+      parentFolder: finalFolderName
     });
 
-    showMessage("設定を保存しました", true);
+    // サニタイズで変更があった場合は警告
+    if (sanitized !== input) {
+      showMessage(`設定を保存しました（一部の文字を置換: ${finalFolderName}）`, true);
+      parentFolderInput.value = finalFolderName;
+    } else {
+      showMessage("設定を保存しました", true);
+    }
   });
 
   // Enterキーでも保存できるようにする

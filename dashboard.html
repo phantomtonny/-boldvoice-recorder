@@ -84,6 +84,50 @@
       color: #333;
       margin-bottom: 20px;
       font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background-color: #667eea;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: help;
+      position: relative;
+    }
+
+    .info-icon:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 0;
+      top: calc(100% + 8px);
+      background-color: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: normal;
+      z-index: 1000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .info-icon:hover::before {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: calc(100% + 2px);
+      border: 6px solid transparent;
+      border-bottom-color: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
     }
 
     .history-container {
@@ -250,12 +294,18 @@
     </div>
 
     <div class="chart-container">
-      <div class="chart-title">スコア推移</div>
+      <div class="chart-title">
+        スコア推移
+        <span class="info-icon" data-tooltip="目標アクセントのスコアの変化を時系列で表示します">i</span>
+      </div>
       <canvas id="scoreChart"></canvas>
     </div>
 
     <div class="history-container">
-      <div class="chart-title">録音履歴</div>
+      <div class="chart-title">
+        録音履歴
+        <span class="info-icon" data-tooltip="全ての録音の詳細情報を一覧表示します">i</span>
+      </div>
 
       <div class="filters">
         <div class="filter-group">

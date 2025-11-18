@@ -191,6 +191,9 @@ function extractAllLanguagesFromPage() {
 /**
  * Bold Voice上の表示を保存用のフォルダ名に変換
  * 例: "American English" → "en_us"
+ *
+ * セキュリティ: 安全な文字（a-z, 0-9, _）のみを許可し、
+ * パストラバーサルやOS依存の危険な文字を除外
  */
 function normalizeLanguageName(name) {
   const lower = name.toLowerCase();
@@ -207,8 +210,13 @@ function normalizeLanguageName(name) {
   if (lower.includes("chinese")) return "zh";
   if (lower.includes("japanese")) return "ja";
   if (lower.includes("korean")) return "ko";
-  // 必要に応じて追加
-  return name.replace(/\s+/g, "_").toLowerCase();
+
+  // フォールバック: 安全な文字のみ許可（a-z, 0-9, アンダースコア）
+  // 危険な文字 (/, \, :, *, ?, ", <, >, |, ..) を除外
+  const sanitized = name.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
+
+  // 空文字列や無効な結果の場合はunknownを返す
+  return sanitized || "unknown";
 }
 
 /**
