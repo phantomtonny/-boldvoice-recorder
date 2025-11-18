@@ -1,5 +1,5 @@
 // Version check
-console.log('BoldVoice Recorder content.js loaded - Version 2.4 (RMSベース無音検出)');
+console.log('BoldVoice Recorder content.js loaded - Version 2.5 (録音中インジケーター追加)');
 
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -7,6 +7,7 @@ let currentStream = null;
 let hasStoppedRecording = false; // 重複停止を防ぐフラグ（グローバル化）
 let periodicCheckInterval = null; // 定期チェックのインターバルID（グローバル化）
 let loadingIndicator = null; // ローディング表示用の要素
+let recordingIndicator = null; // 録音中表示用の要素
 
 // ローディングインジケーターを表示
 function showLoadingIndicator() {
@@ -185,6 +186,97 @@ function showSuccessMessage() {
   }, 2500);
 }
 
+// 録音中インジケーターを表示
+function showRecordingIndicator() {
+  // 既に表示されている場合は何もしない
+  if (recordingIndicator && document.body.contains(recordingIndicator)) {
+    return;
+  }
+
+  recordingIndicator = document.createElement('div');
+  recordingIndicator.id = 'boldvoice-recorder-recording';
+  recordingIndicator.innerHTML = `
+    <div style="
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 999999;
+      background: linear-gradient(135deg, #ff6b6b 0%, #e74c3c 100%);
+      color: white;
+      padding: 16px 24px;
+      border-radius: 12px;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: slideIn 0.3s ease-out;
+    ">
+      <div style="
+        width: 12px;
+        height: 12px;
+        background: white;
+        border-radius: 50%;
+        animation: pulse 1.5s ease-in-out infinite;
+      "></div>
+      <span>🎤 拡張機能が録音中</span>
+    </div>
+    <style>
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.9); }
+      }
+      @keyframes slideIn {
+        from {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+    </style>
+  `;
+
+  document.body.appendChild(recordingIndicator);
+  console.log('[UI] Recording indicator shown');
+}
+
+// 録音中インジケーターを非表示
+function hideRecordingIndicator() {
+  if (recordingIndicator && document.body.contains(recordingIndicator)) {
+    recordingIndicator.style.animation = 'slideOut 0.3s ease-out';
+
+    // アニメーション用のスタイルを追加
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideOut {
+        from {
+          transform: translateX(0);
+          opacity: 1;
+        }
+        to {
+          transform: translateX(400px);
+          opacity: 0;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    setTimeout(() => {
+      if (recordingIndicator && document.body.contains(recordingIndicator)) {
+        document.body.removeChild(recordingIndicator);
+        recordingIndicator = null;
+      }
+      style.remove();
+      console.log('[UI] Recording indicator hidden');
+    }, 300);
+  }
+}
+
 async function startRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     return;
@@ -280,6 +372,9 @@ async function startRecording() {
 
     mediaRecorder.start();
     console.log("Recording started");
+
+    // 録音中インジケーターを表示
+    showRecordingIndicator();
   } catch (error) {
     console.error("Failed to start recording:", error);
   }
@@ -289,6 +384,9 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     console.log("Recording stopped");
+
+    // 録音中インジケーターを非表示
+    hideRecordingIndicator();
   }
 }
 
