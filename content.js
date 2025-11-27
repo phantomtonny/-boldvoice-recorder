@@ -1,29 +1,47 @@
 // Version check
-console.log('BoldVoice Recorder content.js loaded - Version 2.0 (2回判定対応版)');
+console.log('BoldVoice Recorder content.js loaded - Version 3.0 (並行録音対応版)');
 
-let mediaRecorder = null;
-let recordedChunks = [];
-let currentStream = null;
+// Session management for parallel recording support
+let nextSessionId = 1;
+const sessions = {}; // id -> { recorder, stream, chunks }
+let currentSessionId = null; // Currently active recording session
 
 async function startRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    return;
+  // 既に録音中のセッションがある場合は継続
+  if (currentSessionId && sessions[currentSessionId]) {
+    const currentSession = sessions[currentSessionId];
+    if (currentSession.recorder && currentSession.recorder.state === "recording") {
+      console.log(`Session ${currentSessionId} is already recording, continuing...`);
+      return currentSessionId;
+    }
   }
 
+  const id = nextSessionId++;
+  console.log(`Starting new recording session ${id}`);
+
   try {
-    currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(currentStream);
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
 
-    recordedChunks = [];
+    sessions[id] = { recorder, stream, chunks };
+    currentSessionId = id;
 
-    mediaRecorder.ondataavailable = e => {
+    recorder.ondataavailable = e => {
       if (e.data.size > 0) {
-        recordedChunks.push(e.data);
+        chunks.push(e.data);
       }
     };
 
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(recordedChunks, { type: "audio/webm" });
+    recorder.onstop = async () => {
+      const session = sessions[id];
+      if (!session) {
+        console.warn(`Session ${id} not found in onstop handler`);
+        return;
+      }
+
+      console.log(`Processing recording for session ${id}`);
+      const blob = new Blob(session.chunks, { type: "audio/webm" });
       const blobUrl = URL.createObjectURL(blob);
 
       const { language } = extractTopLanguageFromPage() || { language: "unknown" };
@@ -36,35 +54,75 @@ async function startRecording() {
 
       chrome.runtime.sendMessage({
         type: "saveRecording",
+        sessionId: id,
         blobUrl,
         language,
         dateStr
       }, (res) => {
         if (!res || !res.ok) {
-          console.error("Failed to save recording", res && res.error);
+          console.error(`Failed to save recording for session ${id}`, res && res.error);
+        } else {
+          console.log(`Recording saved successfully for session ${id}`);
         }
         // blobUrlのrevokeは、ダウンロード完了後でも可
         setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
       });
 
-      if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
-        currentStream = null;
+      // Clean up the session
+      if (session.stream) {
+        session.stream.getTracks().forEach(t => t.stop());
+      }
+      delete sessions[id];
+
+      // Clear current session if it was this one
+      if (currentSessionId === id) {
+        currentSessionId = null;
       }
     };
 
-    mediaRecorder.start();
-    console.log("Recording started");
+    recorder.start();
+    console.log(`Recording started for session ${id}`);
+    return id;
   } catch (error) {
-    console.error("Failed to start recording:", error);
+    console.error(`Failed to start recording for session ${nextSessionId - 1}:`, error);
+    // Clean up the failed session
+    delete sessions[nextSessionId - 1];
+    if (currentSessionId === nextSessionId - 1) {
+      currentSessionId = null;
+    }
+    return null;
   }
 }
 
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    console.log("Recording stopped");
+function stopRecording(sessionId = null) {
+  // If no sessionId provided, stop the current session
+  const id = sessionId || currentSessionId;
+
+  if (!id) {
+    console.log("No active session to stop");
+    return;
   }
+
+  const session = sessions[id];
+  if (!session) {
+    console.warn(`Session ${id} not found`);
+    return;
+  }
+
+  if (session.recorder && session.recorder.state === "recording") {
+    session.recorder.stop();
+    console.log(`Recording stopped for session ${id}`);
+  } else {
+    console.log(`Session ${id} is not recording`);
+  }
+}
+
+// Stop all active sessions (useful for cleanup)
+function stopAllRecordings() {
+  console.log("Stopping all active recordings...");
+  Object.keys(sessions).forEach(id => {
+    stopRecording(parseInt(id));
+  });
 }
 
 /**
@@ -190,14 +248,8 @@ function setupTriggers() {
       recordBtn.dataset.listenerAttached = 'true';
 
       recordBtn.addEventListener("click", () => {
-        // 既に録音中の場合は何もしない（継続録音）
-        if (!mediaRecorder || mediaRecorder.state !== "recording") {
-          console.log('Starting recording (or continuing session)');
-          startRecording();
-        } else {
-          console.log('Already recording, continuing...');
-          // 録音は継続（停止しない）
-        }
+        // Start new recording session
+        startRecording();
       });
     }
   });
@@ -214,22 +266,20 @@ function setupTriggers() {
     initialBtn.dataset.listenerAttached = 'true';
 
     initialBtn.addEventListener("click", () => {
-      if (!mediaRecorder || mediaRecorder.state !== "recording") {
-        console.log('Starting recording (or continuing session)');
-        startRecording();
-      } else {
-        console.log('Already recording, continuing...');
-      }
+      startRecording();
     });
   }
 
   // 方式2: 最終結果ページが表示されたら録音を停止
   // 「Download BoldVoice」が表示されたら最終結果と判断
-  let hasStoppedRecording = false; // 重複停止を防ぐフラグ
-
   const observer = new MutationObserver(() => {
-    // 既に停止済みの場合はスキップ
-    if (hasStoppedRecording || !mediaRecorder || mediaRecorder.state !== "recording") {
+    // 現在録音中のセッションがない場合はスキップ
+    if (!currentSessionId || !sessions[currentSessionId]) {
+      return;
+    }
+
+    const currentSession = sessions[currentSessionId];
+    if (!currentSession.recorder || currentSession.recorder.state !== "recording") {
       return;
     }
 
@@ -237,9 +287,8 @@ function setupTriggers() {
     // パフォーマンスのため、特定の範囲のみ検索
     const downloadSection = document.querySelector('.info-section, [class*="download"], [class*="Download"]');
     if (downloadSection && downloadSection.textContent.includes('Download BoldVoice')) {
-      console.log("Final results page detected (Download BoldVoice found), stopping recording");
-      hasStoppedRecording = true;
-      stopRecording();
+      console.log(`Final results page detected for session ${currentSessionId}, stopping recording`);
+      stopRecording(currentSessionId);
     }
   });
 
@@ -257,3 +306,8 @@ if (document.readyState === "loading") {
 } else {
   setupTriggers();
 }
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  stopAllRecordings();
+});

@@ -1,13 +1,13 @@
 // Version check
-console.log('BoldVoice Recorder content.js loaded - Version 2.5 (録音中インジケーター追加)');
+console.log('BoldVoice Recorder content.js loaded - Version 3.2 (並行録音対応版 + 新UI対応 + 結果判定修正)');
 
-let mediaRecorder = null;
-let recordedChunks = [];
-let currentStream = null;
-let hasStoppedRecording = false; // 重複停止を防ぐフラグ（グローバル化）
+// Session management for parallel recording support
+let nextSessionId = 1;
+const sessions = {}; // id -> { recorder, stream, chunks, hasStoppedRecording }
+let currentSessionId = null; // Currently active recording session
 let periodicCheckInterval = null; // 定期チェックのインターバルID（グローバル化）
 let loadingIndicator = null; // ローディング表示用の要素
-let recordingIndicator = null; // 録音中表示用の要素
+let recordingIndicators = {}; // 録音中表示用の要素（セッションごと）
 
 // ローディングインジケーターを表示
 function showLoadingIndicator() {
@@ -101,7 +101,7 @@ function hideLoadingIndicator() {
 }
 
 // 完了メッセージを表示
-function showSuccessMessage() {
+function showSuccessMessage(sessionId) {
   // ローディング表示がある場合は先に消す
   if (loadingIndicator && document.body.contains(loadingIndicator)) {
     document.body.removeChild(loadingIndicator);
@@ -136,7 +136,7 @@ function showSuccessMessage() {
         justify-content: center;
         font-size: 18px;
       ">✓</div>
-      <span>ダウンロード完了しました</span>
+      <span>ダウンロード完了しました${sessionId ? ` (セッション${sessionId})` : ''}</span>
     </div>
     <style>
       @keyframes slideIn {
@@ -153,7 +153,7 @@ function showSuccessMessage() {
   `;
 
   document.body.appendChild(successIndicator);
-  console.log('[UI] Success message shown');
+  console.log(`[UI] Success message shown for session ${sessionId}`);
 
   // 2.5秒後に自動的に消す
   setTimeout(() => {
@@ -186,19 +186,26 @@ function showSuccessMessage() {
   }, 2500);
 }
 
-// 録音中インジケーターを表示
-function showRecordingIndicator() {
+// 録音中インジケーターを表示（セッションごと）
+function showRecordingIndicator(sessionId) {
   // 既に表示されている場合は何もしない
-  if (recordingIndicator && document.body.contains(recordingIndicator)) {
+  if (recordingIndicators[sessionId] && document.body.contains(recordingIndicators[sessionId])) {
     return;
   }
 
-  recordingIndicator = document.createElement('div');
-  recordingIndicator.id = 'boldvoice-recorder-recording';
-  recordingIndicator.innerHTML = `
+  const indicator = document.createElement('div');
+  indicator.id = `boldvoice-recorder-recording-${sessionId}`;
+
+  // セッション数に応じて位置を調整
+  const activeCount = Object.keys(recordingIndicators).filter(id =>
+    recordingIndicators[id] && document.body.contains(recordingIndicators[id])
+  ).length;
+  const topPosition = 20 + (activeCount * 70); // 各インジケーターを70px下にずらす
+
+  indicator.innerHTML = `
     <div style="
       position: fixed;
-      top: 20px;
+      top: ${topPosition}px;
       right: 20px;
       z-index: 999999;
       background: linear-gradient(135deg, #ff6b6b 0%, #e74c3c 100%);
@@ -221,7 +228,7 @@ function showRecordingIndicator() {
         border-radius: 50%;
         animation: pulse 1.5s ease-in-out infinite;
       "></div>
-      <span>🎤 拡張機能が録音中</span>
+      <span>🎤 録音中 (セッション${sessionId})</span>
     </div>
     <style>
       @keyframes pulse {
@@ -241,14 +248,16 @@ function showRecordingIndicator() {
     </style>
   `;
 
-  document.body.appendChild(recordingIndicator);
-  console.log('[UI] Recording indicator shown');
+  document.body.appendChild(indicator);
+  recordingIndicators[sessionId] = indicator;
+  console.log(`[UI] Recording indicator shown for session ${sessionId}`);
 }
 
-// 録音中インジケーターを非表示
-function hideRecordingIndicator() {
-  if (recordingIndicator && document.body.contains(recordingIndicator)) {
-    recordingIndicator.style.animation = 'slideOut 0.3s ease-out';
+// 録音中インジケーターを非表示（セッションごと）
+function hideRecordingIndicator(sessionId) {
+  const indicator = recordingIndicators[sessionId];
+  if (indicator && document.body.contains(indicator)) {
+    indicator.style.animation = 'slideOut 0.3s ease-out';
 
     // アニメーション用のスタイルを追加
     const style = document.createElement('style');
@@ -267,54 +276,70 @@ function hideRecordingIndicator() {
     document.head.appendChild(style);
 
     setTimeout(() => {
-      if (recordingIndicator && document.body.contains(recordingIndicator)) {
-        document.body.removeChild(recordingIndicator);
-        recordingIndicator = null;
+      if (indicator && document.body.contains(indicator)) {
+        document.body.removeChild(indicator);
+        delete recordingIndicators[sessionId];
       }
       style.remove();
-      console.log('[UI] Recording indicator hidden');
+      console.log(`[UI] Recording indicator hidden for session ${sessionId}`);
     }, 300);
   }
 }
 
 async function startRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    return;
+  // 既に録音中のセッションがある場合は継続
+  if (currentSessionId && sessions[currentSessionId]) {
+    const currentSession = sessions[currentSessionId];
+    if (currentSession.recorder && currentSession.recorder.state === "recording") {
+      console.log(`Session ${currentSessionId} is already recording, continuing...`);
+      return currentSessionId;
+    }
   }
 
-  try {
-    // 新しい録音セッション開始時にフラグをリセット
-    hasStoppedRecording = false;
+  const id = nextSessionId++;
+  console.log(`Starting new recording session ${id}`);
 
-    // 既存の定期チェックがあればクリア
-    if (periodicCheckInterval) {
-      clearInterval(periodicCheckInterval);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    const chunks = [];
+
+    sessions[id] = {
+      recorder,
+      stream,
+      chunks,
+      hasStoppedRecording: false
+    };
+    currentSessionId = id;
+
+    // 新しい録音セッション開始時に定期チェックを開始
+    if (!periodicCheckInterval) {
+      periodicCheckInterval = setInterval(checkForResults, 1000);
+      console.log('[INFO] Periodic check enabled for recording sessions');
     }
 
-    // 定期チェックを再開
-    periodicCheckInterval = setInterval(checkForResults, 1000);
-    console.log('[INFO] Recording session started, periodic check enabled');
-
-    currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(currentStream);
-
-    recordedChunks = [];
-
-    mediaRecorder.ondataavailable = e => {
+    recorder.ondataavailable = e => {
       if (e.data.size > 0) {
-        recordedChunks.push(e.data);
+        chunks.push(e.data);
       }
     };
 
-    mediaRecorder.onstop = async () => {
+    recorder.onstop = async () => {
+      const session = sessions[id];
+      if (!session) {
+        console.warn(`Session ${id} not found in onstop handler`);
+        return;
+      }
+
       try {
-        const blob = new Blob(recordedChunks, { type: "audio/webm" });
+        console.log(`Processing recording for session ${id}`);
+        const blob = new Blob(session.chunks, { type: "audio/webm" });
 
         // ローディング表示を開始
         showLoadingIndicator();
 
         // 無音トリミング処理
-        console.log('[Recording] Processing silence trimming...');
+        console.log(`[Recording] Processing silence trimming for session ${id}...`);
         const trimmedBlob = await trimSilence(blob);
 
         const blobUrl = URL.createObjectURL(trimmedBlob);
@@ -342,6 +367,7 @@ async function startRecording() {
 
         chrome.runtime.sendMessage({
           type: "saveRecording",
+          sessionId: id,
           blobUrl,
           language,
           percent,
@@ -349,79 +375,133 @@ async function startRecording() {
           dateStr
         }, (res) => {
           if (!res || !res.ok) {
-            console.error("Failed to save recording", res && res.error);
+            console.error(`Failed to save recording for session ${id}`, res && res.error);
             // エラー時はローディングを消すだけ
             hideLoadingIndicator();
           } else {
+            console.log(`Recording saved successfully for session ${id}`);
             // 成功時は完了メッセージを表示
-            showSuccessMessage();
+            showSuccessMessage(id);
           }
           // blobUrlのrevokeは、ダウンロード完了後でも可
           setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
         });
 
-        if (currentStream) {
-          currentStream.getTracks().forEach(t => t.stop());
-          currentStream = null;
+        // Clean up the session
+        if (session.stream) {
+          session.stream.getTracks().forEach(t => t.stop());
         }
       } catch (error) {
-        console.error('[ERROR] Failed to process recording:', error);
+        console.error(`[ERROR] Failed to process recording for session ${id}:`, error);
         hideLoadingIndicator();
+      } finally {
+        // Clean up session
+        delete sessions[id];
+
+        // Clear current session if it was this one
+        if (currentSessionId === id) {
+          currentSessionId = null;
+        }
+
+        // 全セッションが終了したら定期チェックを停止
+        if (Object.keys(sessions).length === 0 && periodicCheckInterval) {
+          clearInterval(periodicCheckInterval);
+          periodicCheckInterval = null;
+          console.log('[INFO] All sessions ended, periodic check disabled');
+        }
       }
     };
 
-    mediaRecorder.start();
-    console.log("Recording started");
+    recorder.start();
+    console.log(`Recording started for session ${id}`);
 
     // 録音中インジケーターを表示
-    showRecordingIndicator();
+    showRecordingIndicator(id);
+    return id;
   } catch (error) {
-    console.error("Failed to start recording:", error);
+    console.error(`Failed to start recording for session ${nextSessionId - 1}:`, error);
+    // Clean up the failed session
+    delete sessions[nextSessionId - 1];
+    if (currentSessionId === nextSessionId - 1) {
+      currentSessionId = null;
+    }
+    return null;
   }
 }
 
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    console.log("Recording stopped");
+function stopRecording(sessionId = null) {
+  // If no sessionId provided, stop the current session
+  const id = sessionId || currentSessionId;
+
+  if (!id) {
+    console.log("No active session to stop");
+    return;
+  }
+
+  const session = sessions[id];
+  if (!session) {
+    console.warn(`Session ${id} not found`);
+    return;
+  }
+
+  if (session.recorder && session.recorder.state === "recording") {
+    session.recorder.stop();
+    console.log(`Recording stopped for session ${id}`);
 
     // 録音中インジケーターを非表示
-    hideRecordingIndicator();
+    hideRecordingIndicator(id);
+  } else {
+    console.log(`Session ${id} is not recording`);
   }
+}
+
+// Stop all active sessions (useful for cleanup)
+function stopAllRecordings() {
+  console.log("Stopping all active recordings...");
+  Object.keys(sessions).forEach(id => {
+    stopRecording(parseInt(id));
+  });
 }
 
 /**
  * 結果ページ判定のロジック（グローバル関数化）
  */
 function checkForResults() {
-  // 既に停止済みの場合はスキップ
-  if (hasStoppedRecording || !mediaRecorder || mediaRecorder.state !== "recording") {
+  // 現在録音中のセッションを確認
+  const recordingSessions = Object.keys(sessions).filter(id => {
+    const session = sessions[id];
+    return session &&
+           session.recorder &&
+           session.recorder.state === "recording" &&
+           !session.hasStoppedRecording;
+  });
+
+  if (recordingSessions.length === 0) {
     return;
   }
 
-  // 方法1: 「Download BoldVoice」テキストの存在
+  // 最終結果ページの判定（2025-11-27更新）
   const bodyText = document.body.textContent || '';
-  const hasDownloadText = bodyText.includes('Download BoldVoice');
 
-  // 方法2: パーセンテージとdownloadボタンの両方が存在
+  // 新しい判定ロジック: 結果ページ特有のテキストを検出
+  const hasResultsText = bodyText.includes('Did we get it right?');
+  const hasTryAgainButton = bodyText.includes('Try it Again');
+  const hasViewPastResults = bodyText.includes('View Past Results');
+
+  // パーセンテージの存在も確認（念のため）
   const hasPercentage = /\d+%/.test(bodyText);
-  const hasGetButton = bodyText.includes('Get BoldVoice') || bodyText.includes('Download');
-
-  // デバッグログ
-  if (hasPercentage) {
-    console.log('[DEBUG] Results detected, checking for final page...');
-    console.log('[DEBUG] Has Download text:', hasDownloadText);
-    console.log('[DEBUG] Has Get Button:', hasGetButton);
-  }
 
   // 最終結果ページの判定
-  if (hasDownloadText || (hasPercentage && hasGetButton)) {
-    console.log("Final results page detected, stopping recording");
-    hasStoppedRecording = true;
-    stopRecording();
-    if (periodicCheckInterval) {
-      clearInterval(periodicCheckInterval);
-      periodicCheckInterval = null;
+  const isFinalResultsPage = (hasResultsText && hasPercentage) ||
+                             (hasTryAgainButton && hasPercentage) ||
+                             (hasViewPastResults && hasPercentage);
+
+  if (isFinalResultsPage) {
+    // 現在のセッションのみ停止（他のセッションは継続可能）
+    if (currentSessionId && sessions[currentSessionId] && !sessions[currentSessionId].hasStoppedRecording) {
+      console.log(`[INFO] Final results page detected for session ${currentSessionId}, stopping recording`);
+      sessions[currentSessionId].hasStoppedRecording = true;
+      stopRecording(currentSessionId);
     }
   }
 }
@@ -536,28 +616,24 @@ function normalizeLanguageName(name) {
  */
 function setupTriggers() {
   // 方式1: 録音ボタンを監視
-  // 実際のDOM構造（2025-11-16時点）:
-  // <div class="z-20 cursor-pointer select-none flex transition-all yellow-100
-  //      justify-center items-center rounded-full size-[90px] bg-action-button-dark">
+  // 実際のDOM構造（2025-11-27更新）:
+  // <div class="z-20 cursor-pointer select-none flex transition-[transform,box-shadow]
+  //      justify-center items-center rounded-full size-[90px] active:scale-[1.12]
+  //      duration-700 ease-out bg-gradient-to-tr from-gradients-primary-orange to-gradients-primary-fuchsia">
   //   <svg>マイクアイコン</svg>
   // </div>
 
   // MutationObserverで動的に追加される録音ボタンを監視
   const observeRecordButton = new MutationObserver(() => {
-    const recordBtn = document.querySelector('div.bg-action-button-dark.rounded-full.cursor-pointer');
+    // 新しいセレクタ: size-[90px]が特徴的
+    const recordBtn = document.querySelector('div.cursor-pointer.rounded-full.size-\\[90px\\]');
     if (recordBtn && !recordBtn.dataset.listenerAttached) {
       console.log('Recording button found, attaching listener');
       recordBtn.dataset.listenerAttached = 'true';
 
       recordBtn.addEventListener("click", () => {
-        // 既に録音中の場合は何もしない（継続録音）
-        if (!mediaRecorder || mediaRecorder.state !== "recording") {
-          console.log('Starting recording (or continuing session)');
-          startRecording();
-        } else {
-          console.log('Already recording, continuing...');
-          // 録音は継続（停止しない）
-        }
+        // Start new recording session (Pattern B: always creates new session)
+        startRecording();
       });
     }
   });
@@ -568,18 +644,13 @@ function setupTriggers() {
   });
 
   // 初回チェック
-  const initialBtn = document.querySelector('div.bg-action-button-dark.rounded-full.cursor-pointer');
+  const initialBtn = document.querySelector('div.cursor-pointer.rounded-full.size-\\[90px\\]');
   if (initialBtn && !initialBtn.dataset.listenerAttached) {
     console.log('Recording button found (initial), attaching listener');
     initialBtn.dataset.listenerAttached = 'true';
 
     initialBtn.addEventListener("click", () => {
-      if (!mediaRecorder || mediaRecorder.state !== "recording") {
-        console.log('Starting recording (or continuing session)');
-        startRecording();
-      } else {
-        console.log('Already recording, continuing...');
-      }
+      startRecording();
     });
   }
 
@@ -603,11 +674,17 @@ if (document.readyState === "loading") {
 
 // 録音中にページを離れようとすると警告を表示
 window.addEventListener("beforeunload", (e) => {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
+  const hasActiveRecording = Object.keys(sessions).some(id => {
+    const session = sessions[id];
+    return session && session.recorder && session.recorder.state === "recording";
+  });
+
+  if (hasActiveRecording) {
     // 標準的な警告メッセージを表示（ブラウザが自動的に表示）
     e.preventDefault();
     e.returnValue = ""; // Chrome requires returnValue to be set
     console.log("[WARNING] Recording in progress - page unload prevented");
+    stopAllRecordings(); // Clean up all sessions
     return "録音中です。ページを離れると録音が失われます。";
   }
 });
